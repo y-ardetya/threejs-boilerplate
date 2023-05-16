@@ -5,7 +5,9 @@ import fragmentShader from "./shaders/fragment.glsl";
 import simVertex from "./shaders/simVertex.glsl";
 import simFragment from "./shaders/simFragment.glsl";
 
-import texture from "/test.jpg";
+import texture from "/surtur.jpg";
+
+const lerp = (a, b, n) => (1 - n) * a + n * b;
 
 export default class Sketch {
   constructor(options) {
@@ -14,6 +16,10 @@ export default class Sketch {
 
     this.width = this.container.offsetWidth;
     this.height = this.container.offsetHeight;
+
+    //* setup raycaster
+    this.raycaster = new THREE.Raycaster();
+    this.pointer = new THREE.Vector2();
 
     this.renderer = new THREE.WebGLRenderer();
     this.renderer.setSize(this.width, this.height);
@@ -31,10 +37,37 @@ export default class Sketch {
 
     this.time = 0;
 
+    this.mouseEvents();
     this.setupFBO();
     this.addObjects();
     this.setupResize();
     this.render();
+  }
+
+  mouseEvents() {
+    this.planeMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(10, 10),
+      new THREE.MeshBasicMaterial()
+    );
+
+    this.dummy = new THREE.Mesh(
+      new THREE.SphereGeometry(0.01, 32, 32),
+      new THREE.MeshNormalMaterial()
+    );
+    this.scene.add(this.dummy);
+
+    window.addEventListener("mousemove", (e) => {
+      this.pointer.x = (e.clientX / this.width) * 2 - 1;
+      this.pointer.y = -(e.clientY / this.height) * 2 + 1;
+      this.raycaster.setFromCamera(this.pointer, this.camera);
+
+      const intersects = this.raycaster.intersectObjects([this.planeMesh]);
+
+      if (intersects.length > 0) {
+        this.dummy.position.copy(intersects[0].point);
+        this.simMaterial.uniforms.uMouse.value = intersects[0].point;
+      }
+    });
   }
 
   setupResize() {
@@ -51,7 +84,7 @@ export default class Sketch {
   }
 
   setupFBO() {
-    this.size = 32;
+    this.size = 128;
     this.number = this.size * this.size;
 
     //* Data Texture
@@ -60,8 +93,8 @@ export default class Sketch {
     for (let i = 0; i < this.size; i++) {
       for (let j = 0; j < this.size; j++) {
         const index = i * this.size + j;
-        data[4 * index + 0] = Math.random() * 2 - 1;
-        data[4 * index + 1] = Math.random() * 2 - 1;
+        data[4 * index + 0] = lerp(-0.5, 0.5, j / (this.size - 1));
+        data[4 * index + 1] = lerp(-0.5, 0.5, i / (this.size - 1));
         data[4 * index + 2] = 0;
         data[4 * index + 3] = 1;
       }
@@ -90,7 +123,9 @@ export default class Sketch {
     this.simMaterial = new THREE.ShaderMaterial({
       uniforms: {
         time: { value: 0 },
-        uTexture: { value: this.positions },
+        uCurrentPosition: { value: this.positions },
+        uOriginPosition: { value: this.positions },
+        uMouse: { value: new THREE.Vector3(0, 0, 0) },
       },
       vertexShader: simVertex,
       fragmentShader: simFragment,
@@ -145,6 +180,7 @@ export default class Sketch {
         time: { value: 0 },
         // uTexture: { value: new THREE.TextureLoader().load(texture) },
         uTexture: { value: this.positions },
+        uTest : { value: new THREE.TextureLoader().load(texture) },
       },
       vertexShader: vertexShader,
       fragmentShader: fragmentShader,
@@ -178,8 +214,8 @@ export default class Sketch {
     this.renderTarget1 = temp;
 
     this.material.uniforms.uTexture.value = this.renderTarget.texture;
-    this.simMaterial.uniforms.uTexture.value = this.renderTarget1.texture;
-    
+    this.simMaterial.uniforms.uCurrentPosition.value =
+      this.renderTarget1.texture;
 
     window.requestAnimationFrame(this.render.bind(this));
   }
