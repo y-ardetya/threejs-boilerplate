@@ -2,12 +2,14 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import vertexShader from "./shaders/vertex.glsl";
 import fragmentShader from "./shaders/fragment.glsl";
+import simVertex from "./shaders/simVertex.glsl";
+import simFragment from "./shaders/simFragment.glsl";
 
 import texture from "/test.jpg";
 
 export default class Sketch {
   constructor(options) {
-    this.container = options.domElement;
+    this.container = options.dom;
     this.scene = new THREE.Scene();
 
     this.width = this.container.offsetWidth;
@@ -29,6 +31,7 @@ export default class Sketch {
 
     this.time = 0;
 
+    this.setupFBO();
     this.addObjects();
     this.setupResize();
     this.render();
@@ -47,9 +50,71 @@ export default class Sketch {
     this.camera.updateProjectionMatrix();
   }
 
-  addObjects() {
+  setupFBO() {
     this.size = 32;
     this.number = this.size * this.size;
+
+    //* Data Texture
+    const data = new Float32Array(4 * this.number);
+
+    for (let i = 0; i < this.size; i++) {
+      for (let j = 0; j < this.size; j++) {
+        const index = i * this.size + j;
+        data[4 * index + 0] = Math.random() * 2 - 1;
+        data[4 * index + 1] = Math.random() * 2 - 1;
+        data[4 * index + 2] = 0;
+        data[4 * index + 3] = 1;
+      }
+    }
+    this.positions = new THREE.DataTexture(
+      data,
+      this.size,
+      this.size,
+      THREE.RGBAFormat,
+      THREE.FloatType
+    );
+
+    this.positions.needsUpdate = true;
+
+    //* FBO scene
+    this.sceneFBO = new THREE.Scene();
+    this.cameraFBO = new THREE.OrthographicCamera(-1, 1, 1, -1, -2, 2);
+    this.cameraFBO.position.z = 1;
+    this.cameraFBO.lookAt(new THREE.Vector3(0, 0, 0));
+
+    let geometryFBO = new THREE.PlaneGeometry(2, 2, 2, 2);
+    this.simMaterial = new THREE.MeshBasicMaterial({
+      color: 0xff0000,
+      wireframe: true,
+    });
+    this.simMaterial = new THREE.ShaderMaterial({
+      uniforms: {
+        time: { value: 0 },
+        uTexture: { value: this.positions },
+      },
+      vertexShader: simVertex,
+      fragmentShader: simFragment,
+    });
+    this.simMesh = new THREE.Mesh(geometryFBO, this.simMaterial);
+    this.sceneFBO.add(this.simMesh);
+
+    //* Render Target
+    this.renderTarget = new THREE.WebGLRenderTarget(this.size, this.size, {
+      minFilter: THREE.NearestFilter,
+      magFilter: THREE.NearestFilter,
+      format: THREE.RGBAFormat,
+      type: THREE.FloatType,
+    });
+
+    this.renderTarget1 = new THREE.WebGLRenderTarget(this.size, this.size, {
+      minFilter: THREE.NearestFilter,
+      magFilter: THREE.NearestFilter,
+      format: THREE.RGBAFormat,
+      type: THREE.FloatType,
+    });
+  }
+
+  addObjects() {
     this.geometry = new THREE.BufferGeometry();
 
     //* buffer geometry need to be populated by attributes and Uvs
@@ -75,28 +140,6 @@ export default class Sketch {
 
     this.material = new THREE.MeshNormalMaterial();
 
-    //* Data Texture
-    const data = new Float32Array(4 * this.number);
-
-    for (let i = 0; i < this.size; i++) {
-      for (let j = 0; j < this.size; j++) {
-        const index = i * this.size + j;
-        data[4 * index + 0] = Math.random() * 2 - 1;
-        data[4 * index + 1] = Math.random() * 2 - 1;
-        data[4 * index + 2] = 0;
-        data[4 * index + 3] = 1;
-      }
-    }
-    this.positions = new THREE.DataTexture(
-      data,
-      this.size,
-      this.size,
-      THREE.RGBAFormat,
-      THREE.FloatType
-    );
-
-    this.positions.needsUpdate = true;
-
     this.material = new THREE.ShaderMaterial({
       uniforms: {
         time: { value: 0 },
@@ -115,11 +158,33 @@ export default class Sketch {
 
     this.material.uniforms.time.value = this.time;
 
+    //! The render order is important
+
+    //* Render Target
+    this.renderer.setRenderTarget(this.renderTarget);
+
+    //* FBO scene
+    this.renderer.render(this.sceneFBO, this.cameraFBO);
+
+    //* Output
+    this.renderer.setRenderTarget(null);
+
+    //* main scene
     this.renderer.render(this.scene, this.camera);
+
+    //* Swap
+    let temp = this.renderTarget;
+    this.renderTarget = this.renderTarget1;
+    this.renderTarget1 = temp;
+
+    this.material.uniforms.uTexture.value = this.renderTarget.texture;
+    this.simMaterial.uniforms.uTexture.value = this.renderTarget1.texture;
+    
+
     window.requestAnimationFrame(this.render.bind(this));
   }
 }
 
 new Sketch({
-  domElement: document.getElementById("container"),
+  dom: document.querySelector("#container"),
 });
