@@ -5,12 +5,31 @@ import fragmentShader from "./shaders/fragment.glsl";
 import simVertex from "./shaders/simVertex.glsl";
 import simFragment from "./shaders/simFragment.glsl";
 
-import texture from "/surtur.jpg";
+import t1 from "/logo.png";
+import t2 from "/super.png";
+
+import GUI from "lil-gui";
 
 const lerp = (a, b, n) => (1 - n) * a + n * b;
 
+const loadImage = (path) => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "Anonymous"; // to avoid CORS if used with Canvas
+    img.src = path;
+    img.onload = () => {
+      resolve(img);
+    };
+    img.onerror = (e) => {
+      reject(e);
+    };
+  });
+};
+
 export default class Sketch {
   constructor(options) {
+    this.size = 256;
+    this.number = this.size * this.size;
     this.container = options.dom;
     this.scene = new THREE.Scene();
 
@@ -21,7 +40,11 @@ export default class Sketch {
     this.raycaster = new THREE.Raycaster();
     this.pointer = new THREE.Vector2();
 
-    this.renderer = new THREE.WebGLRenderer();
+    this.renderer = new THREE.WebGLRenderer({
+      alpha: true,
+      antialias: true,
+    });
+    this.renderer.setClearColor(0x222222, 1);
     this.renderer.setSize(this.width, this.height);
     this.container.appendChild(this.renderer.domElement);
 
@@ -37,11 +60,81 @@ export default class Sketch {
 
     this.time = 0;
 
-    this.mouseEvents();
-    this.setupFBO();
-    this.addObjects();
-    this.setupResize();
-    this.render();
+    this.setupSettings();
+
+    Promise.all([
+      this.getPixelDataFromImage(t1),
+      this.getPixelDataFromImage(t2),
+    ]).then((textures) => {
+      this.data1 = textures[0];
+      this.data2 = textures[1];
+      this.getPixelDataFromImage(t1);
+      this.mouseEvents();
+      this.setupFBO();
+      this.addObjects();
+      this.setupResize();
+      this.render();
+    });
+  }
+
+  setupSettings() {
+    this.settings = {
+      progress: 0,
+    };
+    this.gui = new GUI();
+    this.gui.add(this.settings, "progress", 0, 1, 0.01).onChange((val) => {
+      this.simMaterial.uniforms.uProgress.value = val;
+    });
+  }
+
+  async getPixelDataFromImage(url) {
+    let img = await loadImage(url);
+    let width = 200;
+    let canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = width;
+    let ctx = canvas.getContext("2d");
+    ctx.drawImage(img, 0, 0, width, width);
+    let canvasData = ctx.getImageData(0, 0, width, width).data;
+
+    let pixels = [];
+    for (let i = 0; i < canvasData.length; i += 4) {
+      let x = (i / 4) % width;
+      let y = Math.floor(i / 4 / width);
+      if (canvasData[i] < 5) {
+        pixels.push({ x: x / width - 0.5, y: 0.5 - y / width });
+      }
+    }
+
+    const data = new Float32Array(4 * this.number);
+    for (let i = 0; i < this.size; i++) {
+      for (let j = 0; j < this.size; j++) {
+        const index = i * this.size + j;
+        let randomPixel = pixels[Math.floor(Math.random() * pixels.length)];
+        if (Math.random() > 0.9) {
+          randomPixel = {
+            x: 3 * (Math.random() - 0.5),
+            y: 3 * (Math.random() - 0.5),
+          };
+        }
+        //* without random = grid effect
+        data[4 * index] = randomPixel.x + (Math.random() - 0.5) * 0.01;
+        data[4 * index + 1] = randomPixel.y + (Math.random() - 0.5) * 0.01;
+        data[4 * index + 2] = 0;
+        data[4 * index + 3] = 1;
+      }
+    }
+
+    let dataTexture = new THREE.DataTexture(
+      data,
+      this.size,
+      this.size,
+      THREE.RGBAFormat,
+      THREE.FloatType
+    );
+    dataTexture.needsUpdate = true;
+
+    return dataTexture;
   }
 
   mouseEvents() {
@@ -84,9 +177,6 @@ export default class Sketch {
   }
 
   setupFBO() {
-    this.size = 128;
-    this.number = this.size * this.size;
-
     //* Data Texture
     const data = new Float32Array(4 * this.number);
 
@@ -123,9 +213,12 @@ export default class Sketch {
     this.simMaterial = new THREE.ShaderMaterial({
       uniforms: {
         time: { value: 0 },
-        uCurrentPosition: { value: this.positions },
-        uOriginPosition: { value: this.positions },
         uMouse: { value: new THREE.Vector3(0, 0, 0) },
+        uCurrentPosition: { value: this.data1 },
+        uOriginPosition: { value: this.data1 },
+        uProgress: { value: 0 },
+        uCurrentPosition1 : { value: this.data2 },
+        uOriginPosition1 : { value: this.data2 },
       },
       vertexShader: simVertex,
       fragmentShader: simFragment,
@@ -180,10 +273,12 @@ export default class Sketch {
         time: { value: 0 },
         // uTexture: { value: new THREE.TextureLoader().load(texture) },
         uTexture: { value: this.positions },
-        uTest : { value: new THREE.TextureLoader().load(texture) },
       },
       vertexShader: vertexShader,
       fragmentShader: fragmentShader,
+      depthWrite: false,
+      depthTest: false,
+      transparent: true,
     });
 
     this.mesh = new THREE.Points(this.geometry, this.material);
