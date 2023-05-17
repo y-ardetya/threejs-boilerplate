@@ -28,7 +28,7 @@ const loadImage = (path) => {
 
 export default class Sketch {
   constructor(options) {
-    this.size = 256;
+    this.size = 512;
     this.number = this.size * this.size;
     this.container = options.dom;
     this.scene = new THREE.Scene();
@@ -120,8 +120,8 @@ export default class Sketch {
         //* without random = grid effect
         data[4 * index] = randomPixel.x + (Math.random() - 0.5) * 0.01;
         data[4 * index + 1] = randomPixel.y + (Math.random() - 0.5) * 0.01;
-        data[4 * index + 2] = 0;
-        data[4 * index + 3] = 1;
+        data[4 * index + 2] = (Math.random()-0.5) * 0.01;
+        data[4 * index + 3] = (Math.random()-0.5) * 0.01;
       }
     }
 
@@ -217,8 +217,8 @@ export default class Sketch {
         uCurrentPosition: { value: this.data1 },
         uOriginPosition: { value: this.data1 },
         uProgress: { value: 0 },
-        uCurrentPosition1 : { value: this.data2 },
-        uOriginPosition1 : { value: this.data2 },
+        uCurrentPosition1: { value: this.data2 },
+        uOriginPosition1: { value: this.data2 },
       },
       vertexShader: simVertex,
       fragmentShader: simFragment,
