@@ -213,6 +213,7 @@ export default class Sketch {
     this.simMaterial = new THREE.ShaderMaterial({
       uniforms: {
         time: { value: 0 },
+        uTime: { value: 0 },
         uMouse: { value: new THREE.Vector3(0, 0, 0) },
         uCurrentPosition: { value: this.data1 },
         uOriginPosition: { value: this.data1 },
@@ -311,6 +312,8 @@ export default class Sketch {
     this.material.uniforms.uTexture.value = this.renderTarget.texture;
     this.simMaterial.uniforms.uCurrentPosition.value =
       this.renderTarget1.texture;
+
+    this.simMaterial.uniforms.uTime.value = this.time;
 
     window.requestAnimationFrame(this.render.bind(this));
   }
