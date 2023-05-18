@@ -29,10 +29,10 @@ void main () {
 
     //* Mouse Repel *//
     float mouseDistance = distance(position, uMouse);
-    float maxDistance = 0.1;
+    float maxDistance = 0.5;
     if (mouseDistance < maxDistance) {
         vec3 direction = normalize(position - uMouse);
-        velocity += direction * (1.0 - mouseDistance / maxDistance) * 0.01;
+        velocity += direction * (1.0 - mouseDistance / maxDistance) * 0.1;
     }
 
     //* LifeSpan *//

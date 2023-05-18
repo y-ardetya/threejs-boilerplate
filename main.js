@@ -1,6 +1,8 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GPUComputationRenderer } from "three/examples/jsm/misc/GPUComputationRenderer.js";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { MeshSurfaceSampler } from "three/examples/jsm/math/MeshSurfaceSampler.js";
 
 import vertexShader from "./shaders/vertex.glsl";
 import fragmentShader from "./shaders/fragment.glsl";
@@ -9,8 +11,8 @@ import simFragmentPosition from "./shaders/simFragment.glsl";
 
 import simFragmentVelocity from "./shaders/simFragmentVelocity.glsl";
 
-import t1 from "/logo.png";
-import t2 from "/super.png";
+//*import model from public
+import suzanne from "./models/suzanne.glb?url";
 
 import GUI from "lil-gui";
 
@@ -61,26 +63,58 @@ export default class Sketch {
     this.camera.position.z = 1;
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+    this.loader = new GLTFLoader();
 
     this.time = 0;
+    this._position = new THREE.Vector3(0, 0, 0);
 
     this.setupSettings();
 
-    Promise.all([
-      this.getPixelDataFromImage(t1),
-      this.getPixelDataFromImage(t2),
-    ]).then((textures) => {
-      this.data1 = this.getPointsOnSphere();
-      this.data2 = this.getPointsOnSphere();
-      this.getPixelDataFromImage(t1);
+    Promise.all([this.loader.loadAsync(suzanne)]).then(([model]) => {
+      this.suzanne = model.scene.children[0];
+      this.suzanne.geometry.rotateX(-Math.PI / 2);
+      this.suzanne.material = new THREE.MeshNormalMaterial();
+
+      this.sampler = new MeshSurfaceSampler(this.suzanne).build();
+
+      // this.scene.add(this.suzanne);
       this.mouseEvents();
       this.initGPU();
       this.getVelocityOnSphere();
+      this.getPointsOnSuzanne();
       this.setupFBO();
       this.addObjects();
       this.setupResize();
       this.render();
     });
+  }
+
+  getPointsOnSuzanne() {
+    //* IMPORTANT
+    const data = new Float32Array(4 * this.number);
+    for (let i = 0; i < this.size; i++) {
+      for (let j = 0; j < this.size; j++) {
+        const index = i * this.size + j;
+
+        this.sampler.sample(this._position);
+
+        data[4 * index] = this._position.x;
+        data[4 * index + 1] = this._position.y;
+        data[4 * index + 2] = this._position.z;
+        data[4 * index + 3] = (Math.random() - 0.5) * 0.01;
+      }
+    }
+
+    let dataTexture = new THREE.DataTexture(
+      data,
+      this.size,
+      this.size,
+      THREE.RGBAFormat,
+      THREE.FloatType
+    );
+    dataTexture.needsUpdate = true;
+
+    return dataTexture;
   }
 
   setupSettings() {
@@ -208,8 +242,8 @@ export default class Sketch {
   }
 
   mouseEvents() {
-    this.planeMesh = new THREE.Mesh(
-      new THREE.SphereGeometry(1, 30, 30),
+    this.sampleMesh = new THREE.Mesh(
+      this.suzanne.geometry,
       new THREE.MeshBasicMaterial()
     );
 
@@ -224,7 +258,7 @@ export default class Sketch {
       this.pointer.y = -(e.clientY / this.height) * 2 + 1;
       this.raycaster.setFromCamera(this.pointer, this.camera);
 
-      const intersects = this.raycaster.intersectObjects([this.planeMesh]);
+      const intersects = this.raycaster.intersectObjects([this.sampleMesh]);
 
       if (intersects.length > 0) {
         this.dummy.position.copy(intersects[0].point);
@@ -256,7 +290,7 @@ export default class Sketch {
       this.renderer
     );
     //* to remove the randomness inconsistency
-    this.pointsOnASphere = this.getPointsOnSphere();
+    this.pointsOnASphere = this.getPointsOnSuzanne();
 
     //* Initializing the position variable
     this.positionVariable = this.gpuCompute.addVariable(
@@ -404,6 +438,9 @@ export default class Sketch {
 
     this.mesh = new THREE.Points(this.geometry, this.material);
     this.scene.add(this.mesh);
+
+    this.ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    this.scene.add(this.ambientLight);
   }
   render() {
     this.time += 0.05;
