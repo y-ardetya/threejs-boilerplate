@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "three": "^0.152.2",
-    "vite-plugin-glsl": "^1.1.2"
-   
+    "vite-plugin-glsl": "^1.1.2",
+    "yuka": "^0.7.8"
   }
 }
